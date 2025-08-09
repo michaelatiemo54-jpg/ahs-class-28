@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>About • AHS Class of ’28</title>
+  <meta name="theme-color" content="#0d6efd" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ============================ HEADER / NAV ============================ -->
+  <header class="header" role="banner">
+    <nav class="nav" aria-label="Primary">
+      <a class="brand" href="./" aria-label="AHS Class of 2028 — Home">
+        <span class="logo" aria-hidden="true">A</span>
+        AHS Class of ’28
+      </a>
+      <div class="links" role="navigation">
+        <a href="./">Home</a>
+        <a href="./fundraisers.html">Fundraisers</a>
+        <a href="./calendar.html">Calendar</a>
+        <a href="./media.html">Media</a>
+        <a href="./achievements.html">Achievements</a>
+        <a class="active" href="./about.html">About</a>
+        <a href="./contact.html">Contact</a>
+        <a href="./admin.html">Admin</a>
+      </div>
+      <button id="menuBtn" class="menu-btn" aria-expanded="false" aria-controls="mobileMenu" aria-label="Open menu">☰</button>
+    </nav>
+
+    <!-- Mobile menu -->
+    <div id="mobileMenu" class="mobile-menu hidden" role="dialog" aria-modal="true" aria-label="Mobile navigation">
+      <a href="./">Home</a>
+      <a href="./fundraisers.html">Fundraisers</a>
+      <a href="./calendar.html">Calendar</a>
+      <a href="./media.html">Media</a>
+      <a href="./achievements.html">Achievements</a>
+      <a class="active" href="./about.html">About</a>
+      <a href="./contact.html">Contact</a>
+      <a href="./admin.html">Admin</a>
+      <div class="small" style="padding:8px 10px; opacity:.8">Tap outside to close</div>
+    </div>
+  </header>
+
+  <!-- ============================== HERO ================================= -->
+  <main role="main">
+    <section class="hero" aria-labelledby="aboutTitle">
+      <div class="card hover-up" style="max-width:860px; margin-inline:auto;">
+        <h1 id="aboutTitle">About This Site</h1>
+        <p class="small" style="margin-top:6px;">
+          Built by and for the Auburn High School Class of 2028.
+        </p>
+        <div class="inline" style="justify-content:center; margin-top:14px;">
+          <a class="btn primary" href="https://instagram.com/ahs.class.of28" target="_blank" rel="noopener">
+            Instagram @ahs.class.of28
+          </a>
+          <a class="btn" href="./contact.html">Contact Officers</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ MISSION =============================== -->
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-3">
+          <article class="panel glass hover-up">
+            <h2 class="section-title">Why it exists</h2>
+            <p class="small">Phones aren’t allowed during school. This site gives students a fast way to:</p>
+            <ul class="small" style="margin:8px 0 0 18px; line-height:1.6;">
+              <li>See what fundraisers are live right now</li>
+              <li>Check the event calendar & no-school days</li>
+              <li>Submit media for highlights</li>
+              <li>Contact class officers quickly</li>
+            </ul>
+          </article>
+
+          <article class="panel glass hover-up">
+            <h2 class="section-title">What’s here</h2>
+            <ul class="small" style="margin:0 0 0 18px; line-height:1.6;">
+              <li><strong>Fundraisers:</strong> Live/Upcoming/Past with times</li>
+              <li><strong>Calendar:</strong> Today highlighted + next/previous event</li>
+              <li><strong>Media:</strong> Photos & video grid; student submissions</li>
+              <li><strong>Achievements:</strong> Wall of recognition</li>
+              <li><strong>Merch:</strong> Class gear (coming soon)</li>
+              <li><strong>Admin:</strong> Quick edits to data (officers only)</li>
+            </ul>
+          </article>
+
+          <article class="panel glass hover-up">
+            <h2 class="section-title">How it’s built</h2>
+            <p class="small">
+              Fast static pages with a glass UI and starfield background. Fundraisers and events
+              load from simple JSON so dates/times are easy to update on GitHub—no coding needed.
+            </p>
+            <div class="chips">
+              <span class="badge blue">Blue / White / Black / Grey</span>
+              <span class="badge">Glass UI</span>
+              <span class="badge">Starfield</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ OFFICERS =============================== -->
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">Class Officers</h2>
+        <p class="section-sub">Tap a card for a quick detail. Email is best during the school day.</p>
+
+        <!-- data-flip enables the flip-on-tap JS we’ll add next -->
+        <div class="grid grid-4">
+          <article class="panel hover-up" data-flip>
+            <div class="front">
+              <div class="chips"><span class="badge blue">Vice President</span></div>
+              <h3 style="margin:8px 0 6px;">Mikey Atiemo</h3>
+              <p class="small">Keeping everything moving and organized.</p>
+              <div class="inline" style="margin-top:10px;">
+                <a class="btn" href="mailto:michaelatiemo54@gmail.com">Personal</a>
+                <a class="btn" href="mailto:matiemo28@auburn.k12.ma.us">School</a>
+              </div>
+            </div>
+            <div class="back small" style="display:none;">
+              Fun fact: Loves futuristic UI and clean animations.
+            </div>
+          </article>
+
+          <article class="panel hover-up" data-flip>
+            <div class="front">
+              <div class="chips"><span class="badge">President</span></div>
+              <h3 style="margin:8px 0 6px;">Patrick Haroian</h3>
+              <p class="small">Leads the team & major initiatives.</p>
+              <div class="inline" style="margin-top:10px;">
+                <a class="btn" href="mailto:pharoian28@auburn.k12.ma.us">Email Patrick</a>
+              </div>
+            </div>
+            <div class="back small" style="display:none;">
+              Fun fact: Always first to volunteer for events.
+            </div>
+          </article>
+
+          <article class="panel hover-up" data-flip>
+            <div class="front">
+              <div class="chips"><span class="badge">Treasurer</span></div>
+              <h3 style="margin:8px 0 6px;">David Ruco</h3>
+              <p class="small">Budget & purchasing—transparent and responsible.</p>
+              <div class="inline" style="margin-top:10px;">
+                <a class="btn" href="mailto:druco28@auburn.k12.ma.us">Email David</a>
+              </div>
+            </div>
+            <div class="back small" style="display:none;">
+              Fun fact: Spreadsheet wizard. 🧮
+            </div>
+          </article>
+
+          <article class="panel hover-up" data-flip>
+            <div class="front">
+              <div class="chips"><span class="badge">Secretary</span></div>
+              <h3 style="margin:8px 0 6px;">Matias Gonzalez</h3>
+              <p class="small">Notes, records, and announcements.</p>
+              <div class="inline" style="margin-top:10px;">
+                <a class="btn" href="mailto:mgonzalez28@auburn.k12.ma.us">Email Matias</a>
+              </div>
+            </div>
+            <div class="back small" style="display:none;">
+              Fun fact: Never misses a detail.
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ GUIDELINES ============================ -->
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-2">
+          <article class="panel glass hover-up">
+            <h2 class="section-title">Media & Submissions</h2>
+            <p class="small">
+              Students can submit photos/videos for the Media page. Submissions are reviewed
+              by officers before posting.
+            </p>
+            <ul class="small" style="margin:8px 0 0 18px; line-height:1.6;">
+              <li>School-appropriate content only</li>
+              <li>Get permission from people in the photo/video</li>
+              <li>No personal phone numbers or private info</li>
+              <li>We may crop or edit for layout</li>
+            </ul>
+            <div class="inline" style="margin-top:12px;">
+              <a class="btn primary" href="./media.html">Go to Media</a>
+              <a class="btn" href="./contact.html">Submit to Officers</a>
+            </div>
+          </article>
+
+          <article class="panel glass hover-up">
+            <h2 class="section-title">Site Conduct</h2>
+            <p class="small">
+              Be respectful. No harassment, hate speech, or impersonation. Violations may be reported to school staff.
+            </p>
+            <div class="chips">
+              <span class="badge success">Positive</span>
+              <span class="badge warn">Safe</span>
+              <span class="badge danger">Report Issues</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================= FOOTER ================================ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="small">
+        Built for AHS Class of 2028 • Glass UI • Colors: Blue / White / Black / Grey
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast placeholder (keeps consistency with your other pages) -->
+  <div id="toast" class="toast info hidden" role="status" aria-live="polite"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
