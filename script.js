@@ -1,18 +1,19 @@
 /* ============================================================
-   AHS Class of ’28 — script.js (SAFE MAX)
-   - NO page fade transitions (prevents blank page)
-   - Watchdog forces page visible if anything hiccups
-   - Starfield (motion-aware), live clock, countdown
-   - Home: Happening Now & Next Up from /data
-   - Fundraisers page: filters, search, sort, per-card countdowns
+   AHS Class of ’28 — script.js (Max Edition)
+   Pages supported:
+     - Home (index.html): live date/time, global countdown, starfield,
+                          Happening Now + Next Up from /data
+     - Fundraisers (fundraisers.html): filters, search, sort, live badges,
+                          per-card countdowns, URL state, accessibility
+   Extras:
+     - Theme toggle (auto + manual, saved)
+     - Page fade transitions
+     - Parallax hero
+     - IntersectionObserver reveal animations
+     - Toast queue
+     - Keyboard shortcuts
+   No external libraries. Vanilla JS.
    ============================================================ */
-
-/* -------------- SAFETY: never allow a blank page -------------- */
-try {
-  // In case anything previously set opacity to 0, reset it now and again later.
-  document.documentElement.style.opacity = '1';
-  setTimeout(()=>{ document.documentElement.style.opacity = '1'; }, 600);
-} catch {}
 
 /* ========================= CONFIG ========================= */
 const CONFIG = {
@@ -30,6 +31,14 @@ const CONFIG = {
     liveWindowMs: 1000 * 30,           // refresh live statuses every 30s
     defaultTab: "all",
     defaultSort: "soonest"
+  },
+  TRANSITIONS: {
+    enabled: true,
+    fadeMs: 180
+  },
+  PARALLAX: {
+    enabled: true,
+    maxTranslateY: 18                // px
   }
 };
 
@@ -56,11 +65,31 @@ function fmtRange(start, end) {
   if (!start) return "";
   if (!end) end = start;
   const sameDay = start.toDateString() === end.toDateString();
-  if (sameDay) return `${fmtDate(start)} • ${fmtTime(start)}–${fmtTime(end)}`;
+  if (sameDay) {
+    return `${fmtDate(start)} • ${fmtTime(start)}–${fmtTime(end)}`;
+  }
   return `${fmtDate(start)} ${fmtTime(start)} → ${fmtDate(end)} ${fmtTime(end)}`;
 }
 function escapeHTML(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+/* ---------------------- Query String State ---------------------- */
+function getQS() {
+  const u = new URL(location.href);
+  return {
+    tab: u.searchParams.get("tab"),
+    q: u.searchParams.get("q"),
+    sort: u.searchParams.get("sort"),
+  };
+}
+function setQS(state = {}) {
+  const u = new URL(location.href);
+  if (state.tab !== undefined)  state.tab ? u.searchParams.set("tab", state.tab) : u.searchParams.delete("tab");
+  if (state.q !== undefined)    state.q ? u.searchParams.set("q", state.q) : u.searchParams.delete("q");
+  if (state.sort !== undefined) state.sort ? u.searchParams.set("sort", state.sort) : u.searchParams.delete("sort");
+  history.replaceState(null, "", u.toString());
 }
 
 /* ---------------------------- Fetch JSON ---------------------------- */
@@ -75,11 +104,11 @@ const toastEl = $("#toast");
 let toastTimer = null;
 const toastQueue = [];
 function showToast(msg, type="info", ms=2800) {
-  if (!toastEl) return;
   toastQueue.push({ msg, type, ms });
   if (!toastTimer) runToastQueue();
 }
 function runToastQueue(){
+  if (!toastEl) return;
   const next = toastQueue.shift();
   if (!next) { toastTimer = null; return; }
   toastEl.textContent = next.msg;
@@ -111,20 +140,47 @@ if (menuBtn && mobileMenu) {
   });
 }
 
-/* ========================= SMOOTH SCROLL (same-page anchors) ========================= */
-$$('a[href^="#"]').forEach(a=>{
-  a.addEventListener("click", e=>{
-    const target = $(a.getAttribute("href"));
-    if (target) { e.preventDefault(); target.scrollIntoView({behavior:"smooth"}); }
+/* ========================= PAGE TRANSITIONS ========================= */
+if (CONFIG.TRANSITIONS.enabled) {
+  document.addEventListener("click", (e)=>{
+    const a = e.target.closest("a");
+    if (!a) return;
+    const url = new URL(a.href, location.href);
+    const sameHost = url.origin === location.origin;
+    const sameTab = !a.hasAttribute("target");
+    const isHash = url.pathname === location.pathname && url.hash && url.hash !== "#";
+    if (sameHost && sameTab && !isHash) {
+      e.preventDefault();
+      fadeOut(()=> location.href = a.href);
+    }
   });
-});
+  window.addEventListener("pageshow", ()=> fadeIn());
+}
+function fadeOut(done){
+  const dur = CONFIG.TRANSITIONS.fadeMs;
+  document.documentElement.style.transition = `opacity ${dur}ms ease`;
+  document.documentElement.style.opacity = "0";
+  setTimeout(done, dur);
+}
+function fadeIn(){
+  const dur = CONFIG.TRANSITIONS.fadeMs;
+  document.documentElement.style.opacity = "0";
+  requestAnimationFrame(()=>{
+    document.documentElement.style.transition = `opacity ${dur}ms ease`;
+    document.documentElement.style.opacity = "1";
+    setTimeout(()=> { document.documentElement.style.transition = ""; }, dur);
+  });
+}
+fadeIn();
 
-/* ========================= THEME TOGGLE (keyboard 't') ========================= */
+/* ========================= THEME TOGGLE ========================= */
 (function themeControl(){
   const prefersDark = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const saved = localStorage.getItem("theme"); // 'dark' | 'light' | null
   let theme = saved || (prefersDark() ? "dark" : "light");
   applyTheme(theme);
+
+  // Add a quick keyboard toggle: press 't'
   document.addEventListener("keydown", (e)=>{
     if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
     if (e.key.toLowerCase() === "t") {
@@ -134,46 +190,81 @@ $$('a[href^="#"]').forEach(a=>{
       showToast(`Theme: ${theme}`, "info", 1200);
     }
   });
-  function applyTheme(t){ document.documentElement.setAttribute("data-theme", t); }
-})();
 
-/* ========================= STARFIELD (motion-aware) ========================= */
-(function starfield(){
-  const wantsReduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (wantsReduce || !CONFIG.STARFIELD_ON) return;
-
-  const canvas = document.createElement("canvas");
-  Object.assign(canvas.style, { position:"fixed", inset:"0", zIndex:"-1", pointerEvents:"none" });
-  document.body.prepend(canvas);
-  const ctx = canvas.getContext("2d");
-  let w,h,stars;
-
-  function resize(){
-    w = canvas.width = innerWidth;
-    h = canvas.height = innerHeight;
-    const count = Math.min(220, Math.floor((w*h)/12000));
-    stars = Array.from({length:count}, ()=>({
-      x: Math.random()*w, y: Math.random()*h,
-      r: Math.random()*1.3 + .3, a: Math.random()*1, v: Math.random()*.15 + .05
-    }));
+  function applyTheme(t){
+    // We don't have separate CSS files, but this can hook in later if needed.
+    // For now we just set a data attribute (you can use it in CSS if desired).
+    document.documentElement.setAttribute("data-theme", t);
   }
-  resize(); addEventListener("resize", resize);
-
-  (function tick(){
-    ctx.clearRect(0,0,w,h);
-    for (const s of stars) {
-      s.y += s.v; s.a += 0.02; if (s.y > h+2) { s.y=-2; s.x=Math.random()*w; }
-      const flicker = 0.6 + Math.sin(s.a)*0.4;
-      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
-      ctx.fillStyle = `rgba(170,200,255,${0.35*flicker})`; ctx.fill();
-    }
-    requestAnimationFrame(tick);
-  })();
 })();
 
-/* ========================= HOME PAGE ========================= */
+/* ========================= PARALLAX HERO ========================= */
+(function parallax(){
+  if (!CONFIG.PARALLAX.enabled) return;
+  const hero = $(".hero .card");
+  if (!hero) return;
+  let ticking = false;
+
+  window.addEventListener("scroll", ()=>{
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(()=>{
+      const y = clamp(window.scrollY / 12, 0, CONFIG.PARALLAX.maxTranslateY);
+      hero.style.transform = `translateY(${y}px)`;
+      ticking = false;
+    });
+  }, { passive: true });
+})();
+
+/* ========================= INTERSECTION REVEAL ========================= */
+(function revealOnScroll(){
+  const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (prefersReduced) return;
+
+  const io = new IntersectionObserver((entries)=>{
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        e.target.style.transition = "transform 500ms cubic-bezier(.2,.8,.2,1), opacity 500ms";
+        e.target.style.transform = "translateY(0)";
+        e.target.style.opacity = "1";
+        io.unobserve(e.target);
+      }
+    }
+  }, { threshold: 0.05 });
+
+  $$(".panel, .card-item, .product, .achieve").forEach(el=>{
+    el.style.transform = "translateY(16px)";
+    el.style.opacity = "0";
+    io.observe(el);
+  });
+})();
+
+/* ========================= KEYBOARD SHORTCUTS ========================= */
+/*  t  = theme toggle
+    /  = focus search (fundraisers)
+    g h = go home
+    g f = go fundraisers
+*/
+document.addEventListener("keydown", (e)=>{
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key === "/") {
+    const search = $("#searchInput");
+    if (search) { e.preventDefault(); search.focus(); }
+  } else if (e.key.toLowerCase() === "g") {
+    let seq = "";
+    const handler = (ev)=>{
+      seq = (ev.key || "").toLowerCase();
+      if (seq === "h") location.href = "./";
+      if (seq === "f") location.href = "./fundraisers.html";
+      document.removeEventListener("keydown", handler);
+    };
+    document.addEventListener("keydown", handler, { once: true });
+  }
+});
+
+/* ========================= HOME PAGE LOGIC ========================= */
 (function homeController(){
-  const onHome = !!$("#date") && !!$("#time"); // detects your home hero
+  const onHome = !!document.body && !!$(".hero") && !!$("#date") && !!$("#time");
   if (!onHome) return;
 
   // Live date/time
@@ -197,23 +288,51 @@ $$('a[href^="#"]').forEach(a=>{
     const hrs = Math.floor((total % 86400) / 3600);
     const mins = Math.floor((total % 3600) / 60);
     const secs = total % 60;
-    if (cd.d) cd.d.textContent = String(days);
-    if (cd.h) cd.h.textContent = String(hrs).padStart(2,"0");
-    if (cd.m) cd.m.textContent = String(mins).padStart(2,"0");
-    if (cd.s) cd.s.textContent = String(secs).padStart(2,"0");
+    cd.d.textContent = String(days);
+    cd.h.textContent = String(hrs).padStart(2,"0");
+    cd.m.textContent = String(mins).padStart(2,"0");
+    cd.s.textContent = String(secs).padStart(2,"0");
   }
   setInterval(tickCountdown, 1000); tickCountdown();
 
-  // Welcome toast once
+  // Welcome toast (once per session)
   if (CONFIG.HOME.showWelcomeToastOnce && !sessionStorage.getItem("welcomed")) {
-    showToast("Welcome to the Class of ’28 site!", "success", 2200);
+    showToast("Welcome to the Class of ’28 site!", "success", 2400);
     sessionStorage.setItem("welcomed","1");
   }
 
-  // Dynamic sections (if present in your HTML)
-  const nowList = $("#nowList");          // <div id="nowList" class="card-list"></div>
-  const nextContainer = $("#nextContainer"); // <div id="nextContainer"></div>
+  // Starfield (optional, motion-aware)
+  if (CONFIG.STARFIELD_ON && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const canvas = document.createElement("canvas");
+    Object.assign(canvas.style, { position:"fixed", inset:"0", zIndex:"-1", pointerEvents:"none" });
+    document.body.prepend(canvas);
+    const ctx = canvas.getContext("2d");
+    let w,h,stars;
+    function resize(){
+      w = canvas.width = innerWidth;
+      h = canvas.height = innerHeight;
+      const count = Math.min(220, Math.floor((w*h)/12000));
+      stars = Array.from({length:count}, ()=>({
+        x: Math.random()*w, y: Math.random()*h,
+        r: Math.random()*1.3 + .3, a: Math.random()*1, v: Math.random()*.15 + .05
+      }));
+    }
+    resize(); addEventListener("resize", resize);
+    (function tick(){
+      ctx.clearRect(0,0,w,h);
+      for (const s of stars) {
+        s.y += s.v; s.a += 0.02; if (s.y > h+2) { s.y=-2; s.x=Math.random()*w; }
+        const flicker = 0.6 + Math.sin(s.a)*0.4;
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+        ctx.fillStyle = `rgba(170,200,255,${0.35*flicker})`; ctx.fill();
+      }
+      requestAnimationFrame(tick);
+    })();
+  }
 
+  // Home data hydrate: Happening Now + Next Up + next event
+  const nowList = $("#nowList");
+  const nextContainer = $("#nextContainer");
   (async function hydrateHome(){
     try {
       const [fundraisers, events] = await Promise.all([
@@ -224,7 +343,7 @@ $$('a[href^="#"]').forEach(a=>{
       const now = new Date();
 
       // Fundraisers: live + next upcoming
-      if (Array.isArray(fundraisers) && (nowList || nextContainer)) {
+      if (Array.isArray(fundraisers)) {
         const enriched = fundraisers.map(f=>{
           const start = parseISO(f.start);
           const end   = parseISO(f.end) || start;
@@ -279,10 +398,20 @@ $$('a[href^="#"]').forEach(a=>{
         }
       }
 
-      // (Optional) use events for a hint under “Next Up” if your HTML includes it
-      // You can expand this later on the Calendar page.
-      void events;
-
+      // Next school event (date-only list)
+      if (Array.isArray(events) && nextContainer) {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const upcomingEv = events
+          .map(e => ({...e, _d: parseISO(e.date)}))
+          .filter(e => e._d && e._d >= today)
+          .sort((a,b)=> a._d - b._d);
+        const hint = document.createElement("div");
+        hint.className = "small"; hint.style.marginTop = "8px"; hint.style.color = "var(--muted)";
+        hint.innerHTML = upcomingEv.length
+          ? `Next school event: <strong>${escapeHTML(upcomingEv[0].title)}</strong> • ${fmtDate(upcomingEv[0]._d)}`
+          : `No upcoming events listed. Update <code>data/events.json</code>.`;
+        nextContainer.parentElement.appendChild(hint);
+      }
     } catch (e) {
       console.warn(e);
       showToast("Couldn’t load latest data yet.", "warn", 3200);
@@ -290,7 +419,7 @@ $$('a[href^="#"]').forEach(a=>{
   })();
 })();
 
-/* ====================== FUNDRAISERS PAGE ====================== */
+/* ====================== FUNDRAISERS PAGE LOGIC ====================== */
 (function fundraisersController(){
   const list = $("#fundraiserList");
   if (!list) return; // not on fundraisers page
@@ -407,6 +536,7 @@ $$('a[href^="#"]').forEach(a=>{
         filterBtns.forEach(b=> b.setAttribute("aria-pressed","false"));
         btn.setAttribute("aria-pressed","true");
         activeTab = btn.dataset.filter || "all";
+        setQS({tab: activeTab});
         refresh();
       });
     });
@@ -415,6 +545,7 @@ $$('a[href^="#"]').forEach(a=>{
     if (searchInput) {
       searchInput.addEventListener("input", ()=>{
         query = searchInput.value.trim();
+        setQS({q: query});
         refresh();
       });
     }
@@ -423,6 +554,7 @@ $$('a[href^="#"]').forEach(a=>{
     if (sortSelect) {
       sortSelect.addEventListener("change", ()=>{
         sortBy = sortSelect.value || CONFIG.FUNDRAISERS.defaultSort;
+        setQS({sort: sortBy});
         refresh();
       });
     }
@@ -435,12 +567,27 @@ $$('a[href^="#"]').forEach(a=>{
     });
   }
 
+  function applyQSDefaults() {
+    const qs = getQS();
+    if (qs.tab) {
+      activeTab = qs.tab;
+      filterBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.filter === activeTab)));
+    } else {
+      filterBtns.forEach(b => b.setAttribute("aria-pressed","false"));
+      const def = filterBtns.find(b=> b.dataset.filter === activeTab);
+      if (def) def.setAttribute("aria-pressed","true");
+    }
+    if (qs.q && searchInput) { query = qs.q; searchInput.value = qs.q; }
+    if (qs.sort && sortSelect) { sortBy = qs.sort; sortSelect.value = qs.sort; }
+  }
+
   async function init() {
     try {
       const data = await fetchJSON(CONFIG.PATHS.fundraisers);
       const arr = Array.isArray(data) ? data : [];
       if (!arr.length) showToast("No fundraisers yet — add some in data/fundraisers.json", "warn", 3000);
 
+      // Make sure items have expected fields to avoid runtime errors
       raw = arr.map(x => ({
         title: x.title || "Untitled",
         location: x.location || "",
@@ -450,6 +597,7 @@ $$('a[href^="#"]').forEach(a=>{
       }));
       enriched = hydrateDates(raw);
 
+      applyQSDefaults();
       wireControls();
       refresh();
 
@@ -469,3 +617,4 @@ $$('a[href^="#"]').forEach(a=>{
 
   init();
 })();
+
