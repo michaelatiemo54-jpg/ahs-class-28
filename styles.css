@@ -1,157 +1,135 @@
-// ======== NAVIGATION HIGHLIGHT ON SCROLL =========
-const sections = document.querySelectorAll("section");
-const navLinks = document.querySelectorAll("nav ul li a");
+/* ====== BASE STYLES ====== */
+html {
+    scroll-behavior: smooth;
+}
 
-window.addEventListener("scroll", () => {
-    let current = "";
-    sections.forEach(section => {
-        const sectionTop = section.offsetTop - 100;
-        if (pageYOffset >= sectionTop) {
-            current = section.getAttribute("id");
-        }
-    });
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4;
+    color: #333;
+    transition: background-color 0.4s, color 0.4s;
+}
 
-    navLinks.forEach(link => {
-        link.classList.remove("active");
-        if (link.getAttribute("href").includes(current)) {
-            link.classList.add("active");
-        }
-    });
-});
+[data-theme="dark"] {
+    background-color: #121212;
+    color: #f1f1f1;
+}
 
-// ======== SMOOTH SCROLLING =========
-navLinks.forEach(link => {
-    link.addEventListener("click", (e) => {
-        e.preventDefault();
-        document.querySelector(link.getAttribute("href")).scrollIntoView({
-            behavior: "smooth"
-        });
-    });
-});
+a {
+    color: inherit;
+    text-decoration: none;
+}
 
-// ======== SCROLL TO TOP BUTTON =========
-const scrollBtn = document.createElement("button");
-scrollBtn.innerText = "⬆";
-scrollBtn.id = "scrollToTop";
-document.body.appendChild(scrollBtn);
+/* ====== NAVIGATION ====== */
+nav {
+    background-color: #007bff;
+    padding: 15px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 999;
+}
 
-scrollBtn.style.cssText = `
-    position: fixed;
-    bottom: 30px;
-    right: 30px;
-    display: none;
+nav ul {
+    list-style: none;
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+    margin: 0;
+    padding: 0;
+}
+
+nav ul li a {
+    color: white;
+    font-weight: bold;
+    padding: 8px 12px;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+nav ul li a.active,
+nav ul li a:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ====== SECTIONS ====== */
+section {
+    padding: 80px 15%;
+    min-height: 100vh;
+}
+
+section:nth-child(even) {
+    background-color: #ffffff;
+}
+
+[data-theme="dark"] section:nth-child(even) {
+    background-color: #1c1c1c;
+}
+
+/* ====== COUNTERS ====== */
+.counter {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #007bff;
+}
+
+/* ====== FORMS ====== */
+form {
+    max-width: 500px;
+    margin: auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+[data-theme="dark"] form {
+    background: #222;
+}
+
+form input,
+form textarea {
+    width: 100%;
+    padding: 10px;
+    margin: 8px 0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    transition: border 0.3s;
+}
+
+form button {
+    padding: 10px 15px;
     background: #007bff;
     color: white;
     border: none;
-    padding: 10px;
-    border-radius: 50%;
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 18px;
-`;
-
-window.addEventListener("scroll", () => {
-    scrollBtn.style.display = window.scrollY > 300 ? "block" : "none";
-});
-
-scrollBtn.addEventListener("click", () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-});
-
-// ======== ANIMATED COUNTERS =========
-const counters = document.querySelectorAll(".counter");
-const speed = 200;
-
-const runCounter = () => {
-    counters.forEach(counter => {
-        const updateCount = () => {
-            const target = +counter.getAttribute("data-target");
-            const count = +counter.innerText;
-            const increment = target / speed;
-
-            if (count < target) {
-                counter.innerText = Math.ceil(count + increment);
-                setTimeout(updateCount, 20);
-            } else {
-                counter.innerText = target;
-            }
-        };
-        updateCount();
-    });
-};
-
-const counterObserver = new IntersectionObserver(entries => {
-    if (entries[0].isIntersecting) {
-        runCounter();
-        counterObserver.disconnect();
-    }
-}, { threshold: 0.5 });
-
-if (counters.length > 0) {
-    counterObserver.observe(counters[0]);
+    transition: background 0.3s;
 }
 
-// ======== FORM VALIDATION =========
-const form = document.querySelector("form");
-if (form) {
-    form.addEventListener("submit", (e) => {
-        let valid = true;
-        form.querySelectorAll("input[required], textarea[required]").forEach(input => {
-            if (!input.value.trim()) {
-                input.style.border = "2px solid red";
-                valid = false;
-            } else {
-                input.style.border = "1px solid #ccc";
-            }
-        });
-        if (!valid) {
-            e.preventDefault();
-            alert("Please fill in all required fields.");
-        }
-    });
+form button:hover {
+    background: #0056b3;
 }
 
-// ======== DARK/LIGHT MODE TOGGLE =========
-const toggleBtn = document.createElement("button");
-toggleBtn.innerText = "🌙";
-toggleBtn.id = "themeToggle";
-document.body.appendChild(toggleBtn);
-
-toggleBtn.style.cssText = `
-    position: fixed;
-    bottom: 80px;
-    right: 30px;
-    background: #333;
-    color: white;
-    border: none;
-    padding: 10px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 18px;
-`;
-
-const applyTheme = (theme) => {
-    document.body.setAttribute("data-theme", theme);
-    toggleBtn.innerText = theme === "dark" ? "☀️" : "🌙";
-    localStorage.setItem("theme", theme);
-};
-
-toggleBtn.addEventListener("click", () => {
-    const currentTheme = document.body.getAttribute("data-theme") || "light";
-    applyTheme(currentTheme === "light" ? "dark" : "light");
-});
-
-if (localStorage.getItem("theme")) {
-    applyTheme(localStorage.getItem("theme"));
+/* ====== SCROLL TO TOP ====== */
+#scrollToTop {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
 }
 
-// ======== FADE-IN ANIMATIONS =========
-const fadeElements = document.querySelectorAll(".fade-in");
-const fadeObserver = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.classList.add("visible");
-        }
-    });
-}, { threshold: 0.2 });
+/* ====== DARK/LIGHT MODE BUTTON ====== */
+#themeToggle {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
 
-fadeElements.forEach(el => fadeObserver.observe(el));
+/* ====== FADE-IN ANIMATION ====== */
+.fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+}
+
+.fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
