@@ -619,3 +619,82 @@ document.addEventListener("keydown", (e)=>{
 })();
 
 
+/* =======================================================================
+   AHS — ABOUT PAGE ADD-ON (no edits to existing code)
+   - Runs ONLY if [data-flip] cards exist (i.e., on about.html)
+   - Card flip on click/tap + keyboard (Enter/Space)
+   - Stronger scroll reveal for About panels
+   ======================================================================= */
+(function AHS_aboutEnhancements(){
+  const flipCards = Array.from(document.querySelectorAll('[data-flip]'));
+  if (!flipCards.length) return; // Not on About page; do nothing
+
+  // --- Card flip behavior (accessible) ---
+  flipCards.forEach(card => {
+    const front = card.querySelector('.front');
+    const back  = card.querySelector('.back');
+
+    // Safety: if structure missing, skip this card
+    if (!front || !back) return;
+
+    // Make the whole card focusable and button-like
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-expanded', 'false');
+
+    // Helper: toggle front/back visibility
+    function flip(){
+      const showingBack = back.style.display !== 'none';
+      if (showingBack) {
+        back.style.display = 'none';
+        front.style.display = '';
+        card.setAttribute('aria-expanded', 'false');
+      } else {
+        back.style.display = '';
+        front.style.display = 'none';
+        card.setAttribute('aria-expanded', 'true');
+      }
+      // a little glow to emphasize interaction
+      card.classList.toggle('glow');
+      setTimeout(()=> card.classList.toggle('glow'), 700);
+    }
+
+    // Default state = show front, hide back
+    back.style.display = 'none';
+    front.style.display = '';
+
+    // Click / tap
+    card.addEventListener('click', flip);
+
+    // Keyboard: Enter / Space
+    card.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); }
+    });
+  });
+
+  // --- Stronger reveal on scroll for About panels ---
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!prefersReduced) {
+    const targets = document.querySelectorAll('.section .panel, .section .card');
+    const io = new IntersectionObserver((entries)=>{
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          el.style.transition = 'transform 600ms cubic-bezier(.2,.8,.2,1), opacity 600ms';
+          el.style.transform  = 'translateY(0) scale(1)';
+          el.style.opacity    = '1';
+          io.unobserve(el);
+        }
+      }
+    }, { threshold: 0.08 });
+
+    targets.forEach(el=>{
+      el.style.transform = 'translateY(20px) scale(.98)';
+      el.style.opacity   = '0';
+      io.observe(el);
+    });
+  }
+
+  // Friendly toast (if your toast element exists)
+  try { if (typeof showToast === 'function') showToast('About page ready', 'success', 1400); } catch {}
+})();
