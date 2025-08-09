@@ -1,350 +1,496 @@
-/* =====================================================
-   AHS Class of ’28 — script.js (Home Enhancements)
-   - Mobile menu + smooth scroll + toast
-   - Live date/time + countdown
-   - Fetch fundraisers/events JSON and populate "Happening Now" + "Next Up"
-   - Optional starfield background (toggle STARFIELD_ON)
-   ===================================================== */
+/* ============================================================
+   AHS Class of ’28 — script.js (Deluxe)
+   Pages supported:
+     - Home (index.html): live date/time, global countdown, starfield,
+                          Happening Now + Next Up from /data
+     - Fundraisers (fundraisers.html): filters, search, sort, live badges,
+                          per-card countdowns, URL state, accessibility
+   No external libraries. All vanilla JS.
+   ============================================================ */
 
 /* ========================= CONFIG ========================= */
-const STARFIELD_ON = true;                // turn off by setting to false
-const TIMEZONE = undefined;               // use browser TZ; you can set "America/New_York" if needed
-const END_OF_SCHOOL = "2026-06-15T23:59:59"; // countdown target (edit anytime)
-
-/* Path helpers (works on GitHub Pages) */
-const DATA = {
-  fundraisers: "data/fundraisers.json",
-  events: "data/events.json",
+const CONFIG = {
+  TIMEZONE: undefined,                 // undefined = browser TZ; or set "America/New_York"
+  END_OF_SCHOOL_DATE: "2026-06-15",    // YYYY-MM-DD (end-of-day)
+  STARFIELD_ON: true,                  // set false to disable background stars
+  PATHS: {
+    fundraisers: "data/fundraisers.json",
+    events: "data/events.json",
+  },
+  HOME: {
+    showWelcomeToastOnce: true
+  },
+  FUNDRAISERS: {
+    liveWindowMs: 1000 * 30,           // refresh live statuses every 30s
+    defaultTab: "all",
+    defaultSort: "soonest"
+  }
 };
 
-/* ================ 1) MOBILE MENU TOGGLE =================== */
-const menuBtn = document.getElementById("menuBtn");
-const mobileMenu = document.getElementById("mobileMenu");
+/* ========================= UTILITIES ========================= */
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+function parseISO(v) {
+  if (!v) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [y,m,d] = v.split("-").map(Number);
+    return new Date(y, m-1, d);
+  }
+  const dt = new Date(v);
+  return isNaN(dt) ? null : dt;
+}
+function fmtDate(d) {
+  return d.toLocaleDateString(CONFIG.TIMEZONE, { weekday:"short", month:"short", day:"numeric" });
+}
+function fmtTime(d) {
+  return d.toLocaleTimeString(CONFIG.TIMEZONE, { hour:"numeric", minute:"2-digit" });
+}
+function fmtRange(start, end) {
+  if (!start) return "";
+  if (!end) end = start;
+  const sameDay = start.toDateString() === end.toDateString();
+  if (sameDay) {
+    return `${fmtDate(start)} • ${fmtTime(start)}–${fmtTime(end)}`;
+  }
+  return `${fmtDate(start)} ${fmtTime(start)} → ${fmtDate(end)} ${fmtTime(end)}`;
+}
+function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+function escapeHTML(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------------------- Query String State ---------------------- */
+function getQS() {
+  const u = new URL(location.href);
+  return {
+    tab: u.searchParams.get("tab"),
+    q: u.searchParams.get("q"),
+    sort: u.searchParams.get("sort"),
+  };
+}
+function setQS(state = {}) {
+  const u = new URL(location.href);
+  if (state.tab !== undefined)  state.tab ? u.searchParams.set("tab", state.tab) : u.searchParams.delete("tab");
+  if (state.q !== undefined)    state.q ? u.searchParams.set("q", state.q) : u.searchParams.delete("q");
+  if (state.sort !== undefined) state.sort ? u.searchParams.set("sort", state.sort) : u.searchParams.delete("sort");
+  history.replaceState(null, "", u.toString());
+}
+
+/* ---------------------------- Fetch JSON ---------------------------- */
+async function fetchJSON(path) {
+  const res = await fetch(`${path}?v=${Date.now().toString().slice(0,10)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status} loading ${path}`);
+  return res.json();
+}
+
+/* ========================= GLOBAL UI BITS ========================= */
+/* Toasts */
+const toastEl = $("#toast");
+let toastTimer;
+function showToast(msg, type="info", ms=3000) {
+  if (!toastEl) return;
+  toastEl.textContent = msg;
+  toastEl.className = `toast ${type}`;
+  toastEl.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> toastEl.classList.add("hidden"), ms);
+}
+
+/* Mobile menu toggle */
+const menuBtn = $("#menuBtn");
+const mobileMenu = $("#mobileMenu");
 if (menuBtn && mobileMenu) {
   menuBtn.addEventListener("click", () => {
     const expanded = menuBtn.getAttribute("aria-expanded") === "true";
     menuBtn.setAttribute("aria-expanded", String(!expanded));
     mobileMenu.classList.toggle("hidden");
   });
-
   document.addEventListener("click", (e) => {
-    if (!mobileMenu.classList.contains("hidden")
-        && !mobileMenu.contains(e.target)
-        && e.target !== menuBtn) {
+    if (!mobileMenu.classList.contains("hidden") &&
+        !mobileMenu.contains(e.target) &&
+        e.target !== menuBtn) {
       menuBtn.setAttribute("aria-expanded", "false");
       mobileMenu.classList.add("hidden");
     }
   });
 }
 
-/* ================== 2) SMOOTH SCROLL ===================== */
-document.querySelectorAll('a[href^="#"]').forEach(link => {
-  link.addEventListener("click", function (e) {
-    const target = document.querySelector(this.getAttribute("href"));
-    if (target) {
-      e.preventDefault();
-      target.scrollIntoView({ behavior: "smooth" });
-    }
+/* Smooth scroll for same-page anchors */
+$$('a[href^="#"]').forEach(a=>{
+  a.addEventListener("click", e=>{
+    const target = $(a.getAttribute("href"));
+    if (target) { e.preventDefault(); target.scrollIntoView({behavior:"smooth"}); }
   });
 });
 
-/* ================== 3) TOAST SYSTEM ====================== */
-const toastEl = document.getElementById("toast");
-let toastTimer;
-function showToast(message, type = "info", duration = 3000) {
-  if (!toastEl) return;
-  toastEl.textContent = message;
-  toastEl.className = `toast ${type}`;
-  toastEl.classList.remove("hidden");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.add("hidden"), duration);
-}
-
-/* ========== 4) LIVE DATE/TIME + COUNTDOWN ================= */
-const dateEl = document.getElementById("date");
-const timeEl = document.getElementById("time");
-
-function updateDateTime() {
-  const now = new Date();
-  const dateStr = now.toLocaleDateString(TIMEZONE, {
-    weekday: "long", year: "numeric", month: "long", day: "numeric"
+/* Entry animation */
+window.addEventListener("DOMContentLoaded", ()=>{
+  $$(".hover-up").forEach(card=>{
+    card.style.opacity = 0; card.style.transform = "translateY(20px)";
+    setTimeout(()=>{ card.style.transition="all .5s ease"; card.style.opacity=1; card.style.transform="translateY(0)"; }, 150);
   });
-  const timeStr = now.toLocaleTimeString(TIMEZONE, {
-    hour: "2-digit", minute: "2-digit", second: "2-digit"
-  });
-  if (dateEl) dateEl.textContent = dateStr;
-  if (timeEl) timeEl.textContent = timeStr;
-}
-setInterval(updateDateTime, 1000);
-updateDateTime();
+});
 
-/* Countdown to end of school */
-const cd = {
-  wrap: document.querySelector(".countdown"),
-  d: document.getElementById("cd-days"),
-  h: document.getElementById("cd-hrs"),
-  m: document.getElementById("cd-min"),
-  s: document.getElementById("cd-sec"),
-};
-const targetDate = new Date(END_OF_SCHOOL).getTime();
+/* ========================= HOME PAGE LOGIC ========================= */
+(function homeController(){
+  const onHome = !!document.body && !!$(".hero") && !!$("#date") && !!$("#time");
+  if (!onHome) return;
 
-function updateCountdown() {
-  const diff = targetDate - Date.now();
-  if (diff <= 0) {
-    if (cd.wrap) cd.wrap.innerHTML = "<strong>School’s out!</strong>";
-    return;
+  // Live date/time
+  const dateEl = $("#date"), timeEl = $("#time");
+  function updateDateTime(){
+    const now = new Date();
+    dateEl.textContent = now.toLocaleDateString(CONFIG.TIMEZONE, { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+    timeEl.textContent = now.toLocaleTimeString(CONFIG.TIMEZONE, { hour:"2-digit", minute:"2-digit", second:"2-digit" });
   }
-  const totalSeconds = Math.floor(diff / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hrs  = Math.floor((totalSeconds % 86400) / 3600);
-  const mins = Math.floor((totalSeconds % 3600) / 60);
-  const secs = totalSeconds % 60;
+  setInterval(updateDateTime, 1000); updateDateTime();
 
-  if (cd.d) cd.d.textContent = days;
-  if (cd.h) cd.h.textContent = String(hrs).padStart(2, "0");
-  if (cd.m) cd.m.textContent = String(mins).padStart(2, "0");
-  if (cd.s) cd.s.textContent = String(secs).padStart(2, "0");
-}
-setInterval(updateCountdown, 1000);
-updateCountdown();
-
-/* ================= 5) JSON HELPERS ======================= */
-async function fetchJSON(path) {
-  try {
-    // cache-bust so Pages updates quickly
-    const res = await fetch(`${path}?v=${Date.now()}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn("Failed to load", path, err);
-    showToast(`Could not load ${path}`, "warn", 2500);
-    return null;
+  // Global countdown
+  const cd = { d: $("#cd-days"), h: $("#cd-hrs"), m: $("#cd-min"), s: $("#cd-sec") };
+  function tickCountdown(){
+    const end = parseISO(CONFIG.END_OF_SCHOOL_DATE);
+    if (!end) return;
+    end.setHours(23,59,59,999);
+    const diff = end - new Date();
+    const total = Math.max(0, Math.floor(diff / 1000));
+    const days = Math.floor(total / 86400);
+    const hrs = Math.floor((total % 86400) / 3600);
+    const mins = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    cd.d.textContent = String(days);
+    cd.h.textContent = String(hrs).padStart(2,"0");
+    cd.m.textContent = String(mins).padStart(2,"0");
+    cd.s.textContent = String(secs).padStart(2,"0");
   }
-}
+  setInterval(tickCountdown, 1000); tickCountdown();
 
-/* Time helpers */
-function parseISO(s) { return s ? new Date(s) : null; }
-function isLive(startISO, endISO, now = new Date()) {
-  const s = parseISO(startISO);
-  const e = parseISO(endISO);
-  if (!s || !e) return false;
-  return s <= now && now <= e;
-}
-function isUpcoming(startISO, now = new Date()) {
-  const s = parseISO(startISO);
-  if (!s) return false;
-  return s > now;
-}
-function fmtRange(startISO, endISO) {
-  const s = parseISO(startISO), e = parseISO(endISO);
-  if (!s || !e) return "";
-  const datePart = s.toLocaleDateString(TIMEZONE, { month:"short", day:"numeric" });
-  const sTime = s.toLocaleTimeString(TIMEZONE, { hour:"numeric", minute:"2-digit" });
-  const eTime = e.toLocaleTimeString(TIMEZONE, { hour:"numeric", minute:"2-digit" });
-  return `${datePart} • ${sTime}–${eTime}`;
-}
-function fmtDateOnly(dateStr) {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString(TIMEZONE, { weekday:"short", month:"short", day:"numeric" });
-}
+  // Welcome toast (once per session)
+  if (CONFIG.HOME.showWelcomeToastOnce && !sessionStorage.getItem("welcomed")) {
+    showToast("Welcome to the Class of ’28 site!", "info", 3200);
+    sessionStorage.setItem("welcomed","1");
+  }
 
-/* ============== 6) DOM TARGETS (existing HTML) ============== */
-/* We’ll find the two panels we rendered on index.html:
-   - First glass panel = “Happening Now”
-   - Second glass panel = “Next Up”
-*/
-const glassPanels = Array.from(document.querySelectorAll(".section .panel.glass"));
-const nowPanel = glassPanels[0] || null;
-const nextPanel = glassPanels[1] || null;
-
-const nowList = nowPanel ? nowPanel.querySelector(".card-list") : null;
-const nextCardContainer = nextPanel ? nextPanel.querySelector(".card-item") : null;
-
-/* ============== 7) RENDER TEMPLATES ======================== */
-function renderLiveCard(item) {
-  const when = fmtRange(item.start, item.end);
-  const loc = item.location ? ` • ${item.location}` : "";
-  const notes = item.notes ? ` • ${item.notes}` : "";
-  return `
-    <div class="card-item">
-      <div class="row">
-        <div class="title">${escapeHTML(item.title || "Untitled")}</div>
-        <span class="status now">LIVE NOW</span>
-      </div>
-      <div class="meta">${escapeHTML(when)}${escapeHTML(loc)}${escapeHTML(notes)}</div>
-    </div>
-  `;
-}
-function renderUpcomingCard(item) {
-  const when = fmtRange(item.start, item.end);
-  const loc = item.location ? ` • ${item.location}` : "";
-  const notes = item.notes ? ` • ${item.notes}` : "";
-  return `
-    <div class="row">
-      <div class="title">${escapeHTML(item.title || "Untitled")}</div>
-      <span class="status upcoming">${escapeHTML(when)}</span>
-    </div>
-    <div class="meta">${escapeHTML((item.location || "") + (item.notes ? " • " + item.notes : ""))}</div>
-  `;
-}
-function renderNoLive() {
-  return `
-    <div class="card-item">
-      <div class="row">
-        <div class="title">Nothing live right this minute</div>
-        <span class="status upcoming">Check “Next Up”</span>
-      </div>
-      <div class="meta">When a fundraiser’s start/end time matches now, it’ll light up here automatically.</div>
-    </div>
-  `;
-}
-
-/* Escape HTML to avoid accidental markup */
-function escapeHTML(s) {
-  return String(s || "")
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#039;");
-}
-
-/* ============== 8) MAIN: LOAD DATA & POPULATE ============== */
-async function hydrateHome() {
-  // Only run on the home page (we check for panels)
-  if (!nowPanel && !nextPanel) return;
-
-  const [fundraisers, events] = await Promise.all([
-    fetchJSON(DATA.fundraisers),
-    fetchJSON(DATA.events)
-  ]);
-
-  const now = new Date();
-
-  /* Fundraisers: live + next upcoming */
-  if (fundraisers && Array.isArray(fundraisers)) {
-    const live = fundraisers.filter(f => isLive(f.start, f.end, now));
-    const upcoming = fundraisers
-      .filter(f => isUpcoming(f.start, now))
-      .sort((a,b) => new Date(a.start) - new Date(b.start));
-
-    // Fill “Happening Now”
-    if (nowList) {
-      if (live.length) {
-        nowList.innerHTML = live.slice(0,3).map(renderLiveCard).join("");
-      } else {
-        nowList.innerHTML = renderNoLive();
+  // Starfield (optional, motion-aware)
+  if (CONFIG.STARFIELD_ON && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const canvas = document.createElement("canvas");
+    Object.assign(canvas.style, { position:"fixed", inset:"0", zIndex:"-1", pointerEvents:"none" });
+    document.body.prepend(canvas);
+    const ctx = canvas.getContext("2d");
+    let w,h,stars;
+    function resize(){
+      w = canvas.width = innerWidth;
+      h = canvas.height = innerHeight;
+      const count = Math.min(220, Math.floor((w*h)/12000));
+      stars = Array.from({length:count}, ()=>({
+        x: Math.random()*w, y: Math.random()*h,
+        r: Math.random()*1.3 + .3, a: Math.random()*1, v: Math.random()*.15 + .05
+      }));
+    }
+    resize(); addEventListener("resize", resize);
+    (function tick(){
+      ctx.clearRect(0,0,w,h);
+      for (const s of stars) {
+        s.y += s.v; s.a += 0.02; if (s.y > h+2) { s.y=-2; s.x=Math.random()*w; }
+        const flicker = 0.6 + Math.sin(s.a)*0.4;
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+        ctx.fillStyle = `rgba(170,200,255,${0.35*flicker})`; ctx.fill();
       }
-    }
-
-    // Fill “Next Up” fundraiser
-    if (nextCardContainer) {
-      nextCardContainer.innerHTML = upcoming.length
-        ? renderUpcomingCard(upcoming[0])
-        : `
-          <div class="row">
-            <div class="title">No upcoming fundraisers</div>
-            <span class="status past">TBD</span>
-          </div>
-          <div class="meta">Add one in <code>data/fundraisers.json</code>.</div>
-        `;
-    }
+      requestAnimationFrame(tick);
+    })();
   }
 
-  /* Events: show next school event (date-only list) underneath Next Up */
-  if (events && Array.isArray(events) && nextPanel) {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const upcomingEvents = events
-      .map(e => ({...e, _d: new Date(e.date + "T00:00:00")}))
-      .filter(e => e._d >= today)
-      .sort((a,b) => a._d - b._d);
+  // Home data hydrate: Happening Now + Next Up + next event
+  const nowList = $("#nowList");
+  const nextContainer = $("#nextContainer");
+  (async function hydrateHome(){
+    try {
+      const [fundraisers, events] = await Promise.all([
+        fetchJSON(CONFIG.PATHS.fundraisers),
+        fetchJSON(CONFIG.PATHS.events)
+      ]);
 
-    const holder = document.createElement("div");
-    holder.className = "small";
-    holder.style.marginTop = "8px";
-    holder.style.color = "var(--muted)";
+      const now = new Date();
 
-    if (upcomingEvents.length) {
-      const ev = upcomingEvents[0];
-      holder.innerHTML = `Next school event: <strong>${escapeHTML(ev.title)}</strong> • ${escapeHTML(fmtDateOnly(ev.date))}`;
+      // Fundraisers: live + next upcoming
+      if (Array.isArray(fundraisers)) {
+        const enriched = fundraisers.map(f=>{
+          const start = parseISO(f.start);
+          const end   = parseISO(f.end) || start;
+          return {...f, start, end};
+        }).filter(x=>x.start);
+
+        const live = enriched.filter(x=> x.start <= now && now <= x.end);
+        const upcoming = enriched.filter(x=> x.start > now).sort((a,b)=> a.start - b.start);
+
+        if (nowList) {
+          nowList.innerHTML = "";
+          if (!live.length) {
+            nowList.innerHTML = `<div class="small" style="color:var(--muted)">Nothing is live this minute. Check “Next Up”.</div>`;
+          } else {
+            for (const f of live.slice(0,3)) {
+              const card = document.createElement("div");
+              card.className = "card-item";
+              card.innerHTML = `
+                <div class="row">
+                  <div class="title">${escapeHTML(f.title || "Fundraiser")}</div>
+                  <span class="status now">LIVE NOW • ${fmtTime(f.start)}–${fmtTime(f.end)}</span>
+                </div>
+                <div class="meta">
+                  ${escapeHTML(f.location || "Location TBA")}
+                  ${f.notes ? " • " + escapeHTML(f.notes) : ""}
+                </div>`;
+              nowList.appendChild(card);
+            }
+          }
+        }
+
+        if (nextContainer) {
+          nextContainer.innerHTML = "";
+          if (!upcoming.length) {
+            nextContainer.innerHTML = `<div class="small" style="color:var(--muted)">No upcoming fundraisers yet. Add one in <code>data/fundraisers.json</code>.</div>`;
+          } else {
+            const f = upcoming[0];
+            const card = document.createElement("div");
+            card.className = "card-item";
+            card.innerHTML = `
+              <div class="row">
+                <div class="title">${escapeHTML(f.title || "Fundraiser")}</div>
+                <span class="status upcoming">${fmtDate(f.start)}</span>
+              </div>
+              <div class="meta">
+                ${fmtRange(f.start, f.end)}
+                • ${escapeHTML(f.location || "Location TBA")}
+                ${f.notes ? " • " + escapeHTML(f.notes) : ""}
+              </div>`;
+            nextContainer.appendChild(card);
+          }
+        }
+      }
+
+      // Next school event (date-only list)
+      if (Array.isArray(events) && nextContainer) {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const upcomingEv = events
+          .map(e => ({...e, _d: parseISO(e.date)}))
+          .filter(e => e._d && e._d >= today)
+          .sort((a,b)=> a._d - b._d);
+        const hint = document.createElement("div");
+        hint.className = "small"; hint.style.marginTop = "8px"; hint.style.color = "var(--muted)";
+        hint.innerHTML = upcomingEv.length
+          ? `Next school event: <strong>${escapeHTML(upcomingEv[0].title)}</strong> • ${fmtDate(upcomingEv[0]._d)}`
+          : `No upcoming events listed. Update <code>data/events.json</code>.`;
+        nextContainer.parentElement.appendChild(hint);
+      }
+    } catch (e) {
+      console.warn(e);
+      showToast("Couldn’t load latest data yet.", "warn", 3200);
+    }
+  })();
+})();
+
+/* ====================== FUNDRAISERS PAGE LOGIC ====================== */
+(function fundraisersController(){
+  const list = $("#fundraiserList");
+  if (!list) return; // not on fundraisers page
+
+  const emptyState = $("#emptyState");
+  const filterBtns = $$("[data-filter]");
+  const searchInput = $("#searchInput");
+  const sortSelect = $("#sortSelect");
+
+  let raw = [];          // original items from JSON
+  let enriched = [];     // with Date objects
+  let activeTab = CONFIG.FUNDRAISERS.defaultTab;
+  let query = "";
+  let sortBy = CONFIG.FUNDRAISERS.defaultSort;
+
+  function announce(msg){
+    // Announce updates for screen readers
+    list.setAttribute("aria-busy", "true");
+    setTimeout(()=>{ list.setAttribute("aria-busy","false"); showToast(msg, "info", 1500); }, 50);
+  }
+
+  function hydrateDates(items) {
+    return items.map(f=>{
+      const start = parseISO(f.start);
+      const end = parseISO(f.end) || start;
+      return {...f, start, end, _id: Math.random().toString(36).slice(2)};
+    }).filter(x=>x.start);
+  }
+
+  function statusOf(item, now = new Date()) {
+    if (item.start <= now && now <= item.end) return "live";
+    if (item.start > now) return "upcoming";
+    return "past";
+  }
+
+  function score(item) {
+    // simple fuzzy-ish score: title+notes includes query terms
+    if (!query) return 0;
+    const hay = `${item.title||""} ${item.notes||""}`.toLowerCase();
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    let s = 0;
+    for (const t of terms) if (hay.includes(t)) s += 1;
+    return -s; // smaller is "better" (for sort stable tie-break)
+  }
+
+  function applyFilters() {
+    const now = new Date();
+    let out = enriched.slice();
+
+    // filter by tab
+    if (activeTab !== "all") {
+      out = out.filter(x => statusOf(x, now) === activeTab);
+    }
+
+    // search
+    if (query) {
+      const q = query.toLowerCase();
+      out = out.filter(x => (x.title||"").toLowerCase().includes(q) || (x.notes||"").toLowerCase().includes(q));
+    }
+
+    // sort
+    if (sortBy === "soonest") {
+      out.sort((a,b)=> a.start - b.start || score(a) - score(b));
+    } else if (sortBy === "latest") {
+      out.sort((a,b)=> b.start - a.start || score(a) - score(b));
+    } else if (sortBy === "title") {
+      out.sort((a,b)=> (a.title||"").localeCompare(b.title||"") || score(a) - score(b));
+    }
+
+    return out;
+  }
+
+  function relTime(target, now = new Date()){
+    const diffMs = target - now;
+    const sign = diffMs >= 0 ? 1 : -1;
+    const sec = Math.abs(Math.floor(diffMs/1000));
+    const min = Math.floor(sec/60);
+    const hr  = Math.floor(min/60);
+    const day = Math.floor(hr/24);
+    if (day)  return (sign>0? "in " : "") + day + " day" + (day!==1?"s":"") + (sign<0? " ago": "");
+    if (hr)   return (sign>0? "in " : "") + hr + " hr"  + (hr!==1?"s":"") + (sign<0? " ago": "");
+    if (min)  return (sign>0? "in " : "") + min + " min" + (min!==1?"s":"") + (sign<0? " ago": "");
+    return (sign>0? "in " : "") + sec + " sec" + (sec!==1?"s":"") + (sign<0? " ago": "");
+  }
+
+  function renderCard(item, now = new Date()){
+    const st = statusOf(item, now);
+    const badge =
+      st === "live"     ? `<span class="status now">LIVE</span>` :
+      st === "upcoming" ? `<span class="status upcoming">Upcoming</span>` :
+                          `<span class="status past">Past</span>`;
+
+    const when = fmtRange(item.start, item.end);
+    const liveClock = st === "live"
+      ? `<div class="small" style="color:var(--muted);">Ends ${relTime(item.end, now)} • ${fmtTime(item.end)}</div>`
+      : st === "upcoming"
+        ? `<div class="small" style="color:var(--muted);">Starts ${relTime(item.start, now)} • ${fmtTime(item.start)}</div>`
+        : `<div class="small" style="color:var(--muted);">Ended ${relTime(item.end, now)}</div>`;
+
+    return `
+      <article class="card-item" data-id="${item._id}">
+        <div class="row">
+          <div class="title">${escapeHTML(item.title || "Fundraiser")}</div>
+          ${badge}
+        </div>
+        <div class="meta">
+          ${when} • ${escapeHTML(item.location || "Location TBA")}
+          ${item.notes ? " • " + escapeHTML(item.notes) : ""}
+        </div>
+        ${liveClock}
+      </article>
+    `;
+  }
+
+  function renderList(items) {
+    list.innerHTML = items.map(it => renderCard(it)).join("");
+    if (emptyState) emptyState.classList.toggle("hidden", items.length !== 0);
+  }
+
+  function refresh() {
+    const items = applyFilters();
+    renderList(items);
+    announce(`${items.length} item${items.length!==1?"s":""} shown`);
+  }
+
+  function wireControls() {
+    // Filters
+    filterBtns.forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        filterBtns.forEach(b=> b.setAttribute("aria-pressed","false"));
+        btn.setAttribute("aria-pressed","true");
+        activeTab = btn.dataset.filter || "all";
+        setQS({tab: activeTab});
+        refresh();
+      });
+    });
+
+    // Search
+    if (searchInput) {
+      searchInput.addEventListener("input", ()=>{
+        query = searchInput.value.trim();
+        setQS({q: query});
+        refresh();
+      });
+    }
+
+    // Sort
+    if (sortSelect) {
+      sortSelect.addEventListener("change", ()=>{
+        sortBy = sortSelect.value || CONFIG.FUNDRAISERS.defaultSort;
+        setQS({sort: sortBy});
+        refresh();
+      });
+    }
+
+    // Keyboard quick-nav: slash to focus search
+    document.addEventListener("keydown", (e)=>{
+      if (e.key === "/" && searchInput) {
+        e.preventDefault(); searchInput.focus();
+      }
+    });
+  }
+
+  function applyQSDefaults() {
+    const qs = getQS();
+    if (qs.tab) {
+      activeTab = qs.tab;
+      filterBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.filter === activeTab)));
     } else {
-      holder.textContent = "No upcoming school events listed. Update data/events.json.";
+      // ensure default pressed state
+      filterBtns.forEach(b => b.setAttribute("aria-pressed","false"));
+      const def = filterBtns.find(b=> b.dataset.filter === activeTab);
+      if (def) def.setAttribute("aria-pressed","true");
     }
-    nextPanel.appendChild(holder);
+
+    if (qs.q && searchInput) { query = qs.q; searchInput.value = qs.q; }
+    if (qs.sort && sortSelect) { sortBy = qs.sort; sortSelect.value = qs.sort; }
   }
-}
-hydrateHome();
 
-/* ============== 9) ENTRY EFFECTS ========================== */
-window.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll(".hover-up").forEach(card => {
-    card.style.opacity = 0;
-    card.style.transform = "translateY(20px)";
-    setTimeout(() => {
-      card.style.transition = "all .5s ease";
-      card.style.opacity = 1;
-      card.style.transform = "translateY(0)";
-    }, 120);
-  });
+  async function init() {
+    try {
+      raw = await fetchJSON(CONFIG.PATHS.fundraisers);
+      enriched = hydrateDates(Array.isArray(raw) ? raw : []);
+      applyQSDefaults();
+      wireControls();
+      refresh();
 
-  showToast("Welcome to the Class of ’28 site!", "info", 3200);
-});
+      // Live refresher (update statuses/countdowns every 30s)
+      setInterval(()=> {
+        enriched = hydrateDates(raw);
+        refresh();
+      }, CONFIG.FUNDRAISERS.liveWindowMs);
 
-/* ============== 10) OPTIONAL STARFIELD ==================== */
-if (STARFIELD_ON) {
-  // create canvas behind everything
-  const canvas = document.createElement("canvas");
-  canvas.style.position = "fixed";
-  canvas.style.inset = "0";
-  canvas.style.zIndex = "-1";
-  canvas.style.pointerEvents = "none";
-  document.body.appendChild(canvas);
-
-  const ctx = canvas.getContext("2d");
-  let w, h, stars;
-
-  function resize() {
-    w = canvas.width = window.innerWidth;
-    h = canvas.height = window.innerHeight;
-    // create stars proportional to screen size
-    const count = Math.min(180, Math.floor((w*h)/14000));
-    stars = Array.from({length: count}).map(() => ({
-      x: Math.random()*w,
-      y: Math.random()*h,
-      z: 0.25 + Math.random()*0.75,
-      r: Math.random()*1.2 + 0.2,
-      tw: Math.random()*Math.PI*2
-    }));
-  }
-  window.addEventListener("resize", resize);
-  resize();
-
-  function tickStarfield(t) {
-    ctx.clearRect(0,0,w,h);
-
-    // subtle gradient tint to blend with theme
-    const grd = ctx.createLinearGradient(0,0,0,h);
-    grd.addColorStop(0,"rgba(82,168,255,0.06)");
-    grd.addColorStop(1,"rgba(0,0,0,0)");
-    ctx.fillStyle = grd;
-    ctx.fillRect(0,0,w,h);
-
-    // draw stars
-    for (const s of stars) {
-      s.x += 0.02 * s.z; // tiny drift
-      if (s.x > w) s.x = 0;
-
-      const pulse = 0.5 + 0.5*Math.sin(t/700 + s.tw);
-      const alpha = 0.35 + 0.45*pulse*s.z;
-
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
-      ctx.fillStyle = `rgba(173, 216, 255, ${alpha})`;
-      ctx.fill();
+    } catch (e) {
+      console.error(e);
+      list.innerHTML = `<div class="panel glass">Could not load fundraisers. Check <code>${CONFIG.PATHS.fundraisers}</code>.</div>`;
+      if (emptyState) emptyState.classList.add("hidden");
+      showToast("Couldn’t load fundraisers yet.", "warn", 3200);
     }
-    requestAnimationFrame(tickStarfield);
   }
-  requestAnimationFrame(tickStarfield);
-}
+
+  init();
+})();
 
